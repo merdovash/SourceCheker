@@ -1,8 +1,8 @@
-from PyQt5.QtCore import QThread, QTimer, pyqtSignal, pyqtSlot, Qt
+from PyQt5.QtCore import pyqtSignal, pyqtSlot, Qt
 from PyQt5.QtWidgets import QWidget, QVBoxLayout, QLabel, QPushButton, QFileDialog, QMessageBox, QApplication, \
-    QHBoxLayout, QProgressBar
+    QProgressBar
 
-from Domain.antistud_fun import findMissingSrc
+from Domain.antistud_fun import find_missing_src
 from GUI.ShowResult import ResultWidget
 
 
@@ -15,11 +15,11 @@ class FileSelectorWidget(QWidget):
         self.layout_ = QVBoxLayout()
 
         self.label = QLabel("Или просто перетащите файл(ы) в окно")
-        self.layout_.addWidget(self.label, 99)
+        self.layout_.addWidget(self.label, 99, alignment=Qt.AlignCenter)
 
         self.btn = QPushButton("Выбрать файл")
         self.btn.clicked.connect(self.select_file)
-        self.layout_.addWidget(self.btn)
+        self.layout_.addWidget(self.btn, alignment=Qt.AlignCenter)
 
         self.setLayout(self.layout_)
         self.result_widgets = []
@@ -28,28 +28,25 @@ class FileSelectorWidget(QWidget):
 
         self.run_signal.connect(self.run)
 
-    def dragEnterEvent(self, e):
-        # print(e)
-        print(e.mimeData().hasUrls())
-        # print(e.mimeData().urls())
-        if e.mimeData().hasUrls():
-            e.accept()
+    def dragEnterEvent(self, event):
+        if event.mimeData().hasUrls():
+            event.accept()
         else:
-            e.ignore()
+            event.ignore()
 
-    def dragMoveEvent(self, e):
-        if e.mimeData().hasUrls():
-            e.accept()
+    def dragMoveEvent(self, event):
+        if event.mimeData().hasUrls():
+            event.accept()
         else:
-            e.ignore()
+            event.ignore()
 
-    def dropEvent(self, e):
-        for url in e.mimeData().urls():
+    def dropEvent(self, event):
+        for url in event.mimeData().urls():
             try:
                 print(url.toLocalFile())
                 self.run_signal.emit(url.toLocalFile())
-            except Exception as e:
-                QMessageBox.critical(self, "Ошибка", str(e))
+            except Exception as exception:
+                QMessageBox.critical(self, "Ошибка", str(exception))
 
     def select_file(self):
         file_name_dialog = QFileDialog()
@@ -59,45 +56,48 @@ class FileSelectorWidget(QWidget):
             try:
                 filenames = file_name_dialog.selectedFiles()
                 self.run_signal.emit(filenames[0])
-            except Exception as e:
-                QMessageBox.critical(self, "Ошибка", "Во время чтения прозошла ошибка")
+            except Exception as exception:
+                QMessageBox.critical(self, "Ошибка", "Во время чтения прозошла ошибка: "+str(exception))
 
     @pyqtSlot('PyQt_PyObject', name='run')
     def run(self, filename):
-        l = QVBoxLayout()
+        layout_ = QVBoxLayout()
         label = QLabel("Обработка файла: {}".format(filename))
-        l.addWidget(label)
+        layout_.addWidget(label)
 
-        bar = QProgressBar()
-        bar.setRange(0,100)
+        progress_bar = QProgressBar()
+        progress_bar.setRange(0, 100)
         message = QLabel()
-        l.addWidget(message, alignment=Qt.AlignCenter)
+        layout_.addWidget(message, alignment=Qt.AlignCenter)
 
-        l.addWidget(bar)
+        layout_.addWidget(progress_bar)
 
-        self.layout().addLayout(l)
+        self.layout().addLayout(layout_)
 
-        def progress_bar(text='', value=0):
-            QApplication.instance().processEvents()
-            bar.setValue(value)
+        def progress_bar_update(text='', value=0):
+            progress_bar.setValue(value)
             message.setText(text)
-        try:
-            data, missing = findMissingSrc(filename, progress_bar)
-
-            data_ = []
-            for index, item in enumerate(data):
-                if index in missing:
-                    data_.append('{}. {}'.format(index + 1, item))
-
-            result_widget = ResultWidget(data_, filename, len(data))
-            self.layout().removeItem(l)
-            bar.deleteLater()
-            label.deleteLater()
-            message.deleteLater()
-            l.deleteLater()
             QApplication.instance().processEvents()
+
+        try:
+            data, missing = find_missing_src(filename, progress_bar_update)
+
+            result_widget = ResultWidget(data, missing, filename)
+
             result_widget.show()
+            QApplication.instance().processEvents()
             self.result_widgets.append(result_widget)
 
-        except Exception as e:
-            QMessageBox.critical(self, "Ошибка", "Во время чтения файла произошла ошибка"+str(e))
+        except Exception as exception:
+            QMessageBox.critical(self, "Ошибка", "Во время чтения файла произошла ошибка" + str(exception))
+
+        finally:
+            self.layout().removeItem(layout_)
+            progress_bar.setParent(None)
+            progress_bar.deleteLater()
+            label.setParent(None)
+            label.deleteLater()
+            message.setParent(None)
+            message.deleteLater()
+            layout_.deleteLater()
+            QApplication.instance().processEvents()

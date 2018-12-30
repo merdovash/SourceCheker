@@ -1,57 +1,72 @@
-from docx import Document
 import re
 import os.path
+from docx import Document
 
 
 # Настройки
-LAST_DATE = 1980    # Миним. дата источника     [1980, стариков мы не любим]
-MAX_ERRORS = 3      # Макс. кол-во ошибок для остановки поиска  [3]
-MIN_LENGTH = 14     # Миним. длина источника   [14]
-MIN_STAGE = 2       # Кол-во заголовков списка [2, но иногда может быть 1]
+LAST_DATE = 1980  # Миним. дата источника     [1980, стариков мы не любим]
+MAX_ERRORS = 3  # Макс. кол-во ошибок для остановки поиска  [3]
+MIN_LENGTH = 14  # Миним. длина источника   [14]
+MIN_STAGE = 2  # Кол-во заголовков списка [2, но иногда может быть 1]
 
 
-def findMissingSrc(path, callback):
+def find_missing_src(file_path, callback=lambda x, y: None):
+    """
+    TODO возвращает объект с полями:
+        - sources: List - список источников
+            - text: str - текст источника
+            - year: int - год источника
+            - has_link: bool - есть ли ссылка на этот источник
+        - author: List[str, str, str] - автор работы
+        - year: int - год написания работы
 
-    if not os.path.isfile(path):
+    TODO извлекать даты  с помощью '[1-2][0-9]{3}' => 1000-2999
+
+    :param file_path: str путь к файлу
+    :param callback: Callable[str, int[0:100]] принимает строку о текущей задаче и число с текущим процентом выполнения
+    :return: Tuple[List[str], List[int]] возвращает список всех источников и список индексов источников на которые
+    есть ссылки
+    """
+
+    if not os.path.isfile(file_path):
         return None, None
     else:
 
-        document = Document(path)
-        results = []
+        document = Document(file_path)
+        sources = []
         wrong = []
         stage = 0
-        count = 0
         errors = 1
 
         paragraphs = document.paragraphs
 
-        for index, para in enumerate(paragraphs):
-            callback('Чтение файла', round(index*10/len(paragraphs)))
+        for index, paragraph in enumerate(paragraphs):
+            callback('Чтение файла', round(index * 10 / len(paragraphs)))
             # Нахождение заголовков
             if stage < MIN_STAGE:
-                if "список" in para.text.lower():
-                    if ("литератур" in para.text.lower()) or ("источник" in para.text.lower()):
+                if "список" in paragraph.text.lower():
+                    if ("литератур" in paragraph.text.lower()) or ("источник" in paragraph.text.lower()):
                         stage += 1
 
             # Нахождение источников
             elif stage == MIN_STAGE:
-                numbers = [int(s) for s in re.findall(r'\b\d+\b', para.text)]
-                itsFine = False
+                numbers = [int(s) for s in re.findall(r'\b\d+\b', paragraph.text)]
+                is_fine = False
                 # Проверка на наличие даты
-                for n in numbers:
-                    if n > LAST_DATE:
-                        results.append(para.text)
-                        itsFine = True
+                for number in numbers:
+                    if number > LAST_DATE:
+                        sources.append(paragraph.text)
+                        is_fine = True
                         break
                 # Проверка формата
-                if itsFine == False:
-                    if "// " in para.text:
-                        results.append(para.text)
-                    elif para.style.name == "List Paragraph" and len(para.text)>MIN_LENGTH:
-                        results.append(para.text)
+                if not is_fine:
+                    if "// " in paragraph.text:
+                        sources.append(paragraph.text)
+                    elif paragraph.style.name == "List Paragraph" and len(paragraph.text) > MIN_LENGTH:
+                        sources.append(paragraph.text)
                     else:
                         errors += 1
-                        wrong.append(para.text)
+                        wrong.append(paragraph.text)
                         if errors > MAX_ERRORS:
                             break
 
@@ -59,37 +74,39 @@ def findMissingSrc(path, callback):
     count = 0
     lacks = []
 
-    for index, res in enumerate(results):
+    for index, source in enumerate(sources):
         count += 1
-        itsFine = False
-        for p_index, p in enumerate(document.paragraphs):
+        is_fine = False
+        for paragraph_index, paragraph in enumerate(document.paragraphs):
             callback('Проверка ссылок',
-                     10 + round((index * len(paragraphs)+p_index)*90 / (len(results) * len(paragraphs))))
-            link1 = "["+str(count)+"]"
-            link2 = "["+str(count)+","
-            if link1 in p.text or link2 in p.text:
-                itsFine = True
+                     10 + round((index * len(paragraphs) + paragraph_index) * 90 / (len(sources) * len(paragraphs))))
+            link1 = "[" + str(count) + "]"
+            link2 = "[" + str(count) + ","
+            if link1 in paragraph.text or link2 in paragraph.text:
+                is_fine = True
                 break
-        if itsFine == False:
+        if not is_fine:
             lacks.append(count)
 
     callback("Завершение", 100)
-    return results, lacks
+    return sources, lacks
+
+
+def run():
+    while True:
+
+        print("\n")
+        input_file_path = input("Path? ")
+
+        list_of_sources, missing_sources = find_missing_src(input_file_path)
+        print(list_of_sources)
+        print(missing_sources)
+
+        input_user_action = input("\nOpen another file? (y/n): ")
+
+        if input_user_action.lower() == "n":
+            break
 
 
 if __name__ == "__main__":
-
-    while True:
-        
-        print("\n")
-        path = input("Path? ")
-        
-        results, missing = findMissingSrc(path)
-        # print (results)
-        print (missing)
-
-        ch = input("\nOpen another file? (y/n): ")
-
-        if ch.lower() == "n":
-            break
-    
+    run()
