@@ -1,6 +1,7 @@
 from PyQt5.QtWidgets import QWidget, QListWidget, QVBoxLayout, QHBoxLayout, QPushButton, QApplication, QFileDialog, \
     QMessageBox, QLabel, QTabWidget
 
+from Domain import get_missing_sources
 from Domain.generate_file import generate
 from GUI.HistogramWidget import HistogramWidget
 
@@ -10,10 +11,7 @@ class ResultWidget(QWidget):
         super().__init__(flags, *args, **kwargs)
         self.source_file = source_file
 
-        missing_links = []
-        for index, item in enumerate(sources):
-            if index in missing:
-                missing_links.append('{}. {}'.format(index + 1, item))
+        missing_links = get_missing_sources(sources, missing)
 
         self.tab = QTabWidget()
 

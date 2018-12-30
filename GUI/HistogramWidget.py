@@ -1,9 +1,9 @@
-import re
 from datetime import datetime
 
 from PyQt5.QtCore import Qt
 from PyQt5.QtWidgets import QWidget, QVBoxLayout, QLabel
 
+from Domain import get_year_from_source_text
 from GUI.Bar import Histogram
 
 
@@ -13,15 +13,7 @@ class HistogramWidget(QWidget):
 
         current_year = datetime.now().year
 
-        years = []
-        for text in sources:
-            year = re.findall('[1-2][0-9]{3}', text)
-            year = map(lambda x: int(x), year)
-            year = list(filter(lambda x: x <= current_year, year))
-
-            have_any_years = len(year) > 0
-            if have_any_years:
-                years.append(max(year))
+        years = list(filter(lambda x: x is not None, [get_year_from_source_text(text) for text in sources]))
 
         layout = QVBoxLayout()
 
