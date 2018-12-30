@@ -3,7 +3,7 @@
 block_cipher = None
 
 
-a = Analysis(['GUI\\__init__.py'],
+a = Analysis(['run.py'],
              pathex=['C:\\Users\\MERDovashkinar\\PycharmProjects\\SourceCheker'],
              binaries=[],
              datas=[],
@@ -29,4 +29,4 @@ exe = EXE(pyz,
           strip=False,
           upx=True,
           runtime_tmpdir=None,
-          console=False )
+          console=False)
