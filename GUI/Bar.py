@@ -89,8 +89,8 @@ class Bar(QWidget):
                         x_ax_y_pos + (self.x_tick_width / 2 + 4)*cos(self.x_tick_rotation)-self._x_ticks_margin*sin(
                             self.x_tick_rotation),
                         50,
-                        bottom),
-                    Qt.AlignHCenter,
+                        30),
+                    xor(Qt.AlignHCenter, Qt.AlignHCenter),
                     str(self._x_ticks[i])
                 )
                 painter.resetTransform()
@@ -100,7 +100,7 @@ class Bar(QWidget):
                         x_pos - x_tick_interval / 2,
                         x_ax_y_pos + self.x_tick_width / 2 + 4+self._x_ticks_margin,
                         x_tick_interval,
-                        bottom),
+                        20),
                     Qt.AlignHCenter,
                     str(self._x_ticks[i])
                 )

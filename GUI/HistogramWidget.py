@@ -29,7 +29,7 @@ class HistogramWidget(QWidget):
         print(years)
         if have_some_data_to_plot:
             self.hist = Histogram(years, self)
-            self.hist.set_x_ticks(list(range(1990, current_year)))
+            self.hist.set_x_ticks(list(range(min(1990, min(years)), current_year+1)))
             self.hist.set_x_ticks_rotate(60)
             self.hist.set_x_ticks_offset(20)
             layout.addWidget(self.hist)
