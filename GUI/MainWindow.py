@@ -1,7 +1,7 @@
 from PyQt5.QtCore import QSize
 from PyQt5.QtWidgets import QMainWindow
 
-from GUI.MainWidget import FileSelectorWidget
+from GUI.MainWidget import MainWidget
 
 
 class MainWindow(QMainWindow):
@@ -12,4 +12,4 @@ class MainWindow(QMainWindow):
 
         self.setWindowTitle("Проверка работ")
 
-        self.setCentralWidget(FileSelectorWidget(self))
+        self.setCentralWidget(MainWidget(self))
