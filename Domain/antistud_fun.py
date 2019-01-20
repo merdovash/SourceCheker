@@ -34,6 +34,7 @@ def find_missing_src(file_path, callback=lambda x, y: None, min_year=None):
             - text: str - текст источника
             - year: int - год источника
             - has_link: bool - есть ли ссылка на этот источник
+            - paragraphs: List[str] - список параграфов, имеющих ссылки на этот источник
         - author: List[str, str, str] - автор работы
         - year: int - год написания работы
 
