@@ -3,7 +3,14 @@ from docx.shared import Pt, Cm
 from docx.enum.text import WD_PARAGRAPH_ALIGNMENT
 
 
-def generate(missing_links, place):
+def generate(missing_links, old_links, place):
+    """
+
+    :param missing_links: список источников, на которые пропущены ссылки
+    :param old_links: список источников, которые устарели
+    :param place:
+    :return:
+    """
     doc = Document()
 
     for section in doc.sections:
@@ -17,10 +24,16 @@ def generate(missing_links, place):
     font.name = 'Times New Roman'
     font.size = Pt(14)
 
-    doc.add_paragraph('На следующие источники отсутствуют ссылки', style=style)
+    if len(missing_links):
+        doc.add_paragraph('На следующие источники отсутствуют ссылки', style=style)
+        for line in missing_links:
+            paragraph = doc.add_paragraph(line, style=style)
+            paragraph.alignment = WD_PARAGRAPH_ALIGNMENT.JUSTIFY
 
-    for line in missing_links:
-        paragraph = doc.add_paragraph(line, style=style)
-        paragraph.alignment = WD_PARAGRAPH_ALIGNMENT.JUSTIFY
+    if len(old_links):
+        doc.add_paragraph('Устаревшие источники', style=style)
+        for line in old_links:
+            paragraph = doc.add_paragraph(line, style=style)
+            paragraph.alignment = WD_PARAGRAPH_ALIGNMENT.JUSTIFY
 
     doc.save(place)

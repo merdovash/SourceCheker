@@ -1,10 +1,11 @@
+import traceback
 from datetime import datetime
 
 from PyQt5.QtCore import pyqtSignal, Qt, pyqtSlot
 from PyQt5.QtWidgets import QWidget, QVBoxLayout, QLabel, QCheckBox, QPushButton, QMessageBox, QFileDialog, \
     QProgressBar, QApplication, QGroupBox, QFormLayout, QSpinBox
 
-from Domain.antistud_fun import find_missing_src
+from Domain.antistud_fun import find_missing_src, NoSourcesException
 from GUI.ShowResult import ResultWidget
 
 
@@ -32,6 +33,10 @@ class FileLoader(QWidget):
         self.view_type_checkbox = QCheckBox()
         self.view_type_checkbox.setChecked(True)
         self.settings_layout.addRow(QLabel("Открыть в этом окне"),self.view_type_checkbox)
+
+        self.auto_save = QCheckBox()
+        self.auto_save.setChecked(False)
+        self.settings_layout.addRow(QLabel('Автоматически сохранить отчет'), self.auto_save)
 
         self.btn = QPushButton("Выбрать файл")
         self.btn.clicked.connect(self.select_file)
@@ -98,14 +103,19 @@ class FileLoader(QWidget):
             QApplication.instance().processEvents()
 
         try:
-            data, missing = find_missing_src(filename, progress_bar_update, **self.config())
+            data, missing, old = find_missing_src(filename, progress_bar_update, **self.config())
 
-            result_widget = ResultWidget(data, missing, filename)
+            result_widget = ResultWidget(data, missing, old, filename)
+            if self.auto_save.isChecked():
+                result_widget.save(auto=True)
 
             self.new_result.emit(result_widget, filename, self.view_type_checkbox.isChecked())
-
+        except NoSourcesException:
+            QMessageBox.critical(self, "Ошибка", "Раздел с источниками не обнаружен")
         except Exception as exception:
             QMessageBox.critical(self, "Ошибка", "Во время чтения файла произошла ошибка" + str(exception))
+            traceback.print_exc(exception)
+
 
         finally:
             self.layout().removeItem(layout_)
