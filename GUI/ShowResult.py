@@ -1,9 +1,14 @@
+from PyQt5.QtCore import Qt
 from PyQt5.QtWidgets import QWidget, QListWidget, QVBoxLayout, QHBoxLayout, QPushButton, QApplication, QFileDialog, \
-    QMessageBox, QLabel, QTabWidget
+    QMessageBox, QLabel, QTabWidget, QTableView, QScrollBar, QAbstractItemView
 
 from Domain import get_missing_sources
+from Domain.antistud_fun import get_year
 from Domain.generate_file import generate
-from GUI.HistogramWidget import HistogramWidget
+
+from PyQtPlot.HistogramWidget import Histogram
+
+from GUI.QSourceList import QSourceModel
 
 
 class ResultWidget(QWidget):
@@ -18,17 +23,30 @@ class ResultWidget(QWidget):
         self.list = QListWidget()
         self.list.addItems(missing_links)
         self.missing_links = missing_links
-
         self.tab.addTab(self.list, "Список пропущенных источников")
-        self.tab.addTab(HistogramWidget(sources, self), "Распределение всех источников по годам")
+
+        data = [x for x in [get_year(source) for source in sources] if x is not None]
+        self.histogram = Histogram(data, source_file, self)
+        self.histogram.set_tooltip_func(lambda x, y, name: 'источников {x} года: {y}'.format(x=x, y=y))
+        self.histogram.horizontal_ax.set_ticks(range(min(data), max(data)))
+        self.tab.addTab(self.histogram, "Распределение всех источников по годам")
+
+        self.table = QTableView()
+        self.table.setVerticalScrollMode(QAbstractItemView.ScrollPerPixel)
+        self.table.setModel(QSourceModel(sources, missing))
+        self.table.setWordWrap(True)
+        self.table.setTextElideMode(Qt.ElideMiddle)
+        self.table.setColumnWidth(0, 600)
+        self.table.resizeRowsToContents()
+        self.tab.addTab(self.table, 'Полная таблица')
 
         self.setWindowTitle("Результат проверки {source_file}".format(source_file=source_file))
 
         self.layout_ = QVBoxLayout()
 
         self.head_layout = QHBoxLayout()
-        self.copy_button = QPushButton("Скопировать всё в буффер")
-        self.save_button = QPushButton("Скачать в формате docx")
+        self.copy_button = QPushButton("Скопировать список пропущенных\nисточников в буффер")
+        self.save_button = QPushButton("Скачать список пропущенных\nисточников в формате docx")
 
         self.copy_button.clicked.connect(self.copy)
         self.save_button.clicked.connect(self.save)
@@ -55,7 +73,7 @@ class ResultWidget(QWidget):
         except Exception as exception:
             QMessageBox.critical(self,
                                  "Ошибка",
-                                 "Во время копирования в буфер обмена произошла ошибка: "+str(exception))
+                                 "Во время копирования в буфер обмена произошла ошибка: " + str(exception))
 
     def save(self):
         try:
@@ -68,4 +86,4 @@ class ResultWidget(QWidget):
                 generate(self.missing_links, name)
                 QMessageBox.information(self, "Файл сохранен", "Файл сохранен: {name}".format(name=name))
         except Exception as exception:
-            QMessageBox.critical(self, "Ошибка", "Во время сохранения произошла ошибка\n"+str(exception))
+            QMessageBox.critical(self, "Ошибка", "Во время сохранения произошла ошибка\n" + str(exception))

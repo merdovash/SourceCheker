@@ -1,6 +1,8 @@
+from datetime import datetime
+
 from PyQt5.QtCore import pyqtSignal, Qt, pyqtSlot
 from PyQt5.QtWidgets import QWidget, QVBoxLayout, QLabel, QCheckBox, QPushButton, QMessageBox, QFileDialog, \
-    QProgressBar, QApplication
+    QProgressBar, QApplication, QGroupBox, QFormLayout, QSpinBox
 
 from Domain.antistud_fun import find_missing_src
 from GUI.ShowResult import ResultWidget
@@ -18,14 +20,24 @@ class FileLoader(QWidget):
         self.label = QLabel("Или просто перетащите файл(ы) в окно")
         self.layout_.addWidget(self.label, 99, alignment=Qt.AlignCenter)
 
+        self.settings = QGroupBox('Настройки')
+        self.settings_layout = QFormLayout()
+        self.settings.setLayout(self.settings_layout)
+
+        self.min_year = QSpinBox()
+        self.min_year.setRange(1970, datetime.now().year)
+        self.min_year.setValue(2000)
+        self.settings_layout.addRow(QLabel('Минимальный год'), self.min_year)
+
         self.view_type_checkbox = QCheckBox()
-        self.view_type_checkbox.setText("Открыть в этом окне")
         self.view_type_checkbox.setChecked(True)
-        self.layout_.addWidget(self.view_type_checkbox, alignment=Qt.AlignRight)
+        self.settings_layout.addRow(QLabel("Открыть в этом окне"),self.view_type_checkbox)
 
         self.btn = QPushButton("Выбрать файл")
         self.btn.clicked.connect(self.select_file)
         self.layout_.addWidget(self.btn, alignment=Qt.AlignCenter)
+
+        self.layout_.addWidget(self.settings)
 
         self.setLayout(self.layout_)
         self.result_widgets = []
@@ -86,7 +98,7 @@ class FileLoader(QWidget):
             QApplication.instance().processEvents()
 
         try:
-            data, missing = find_missing_src(filename, progress_bar_update)
+            data, missing = find_missing_src(filename, progress_bar_update, **self.config())
 
             result_widget = ResultWidget(data, missing, filename)
 
@@ -105,3 +117,8 @@ class FileLoader(QWidget):
             message.deleteLater()
             layout_.deleteLater()
             QApplication.instance().processEvents()
+
+    def config(self):
+        return dict(
+            min_year=self.min_year.value()
+        )

@@ -1,16 +1,33 @@
 import re
 import os.path
+from datetime import datetime
+
 from docx import Document
 
-
 # Настройки
-LAST_DATE = 1980  # Миним. дата источника     [1980, стариков мы не любим]
 MAX_ERRORS = 3  # Макс. кол-во ошибок для остановки поиска  [3]
 MIN_LENGTH = 14  # Миним. длина источника   [14]
 MIN_STAGE = 2  # Кол-во заголовков списка [2, но иногда может быть 1]
 
 
-def find_missing_src(file_path, callback=lambda x, y: None):
+def get_year(source):
+    """
+    Возвращает год выхода источника
+    :param source: str
+    :return: int or None
+    """
+
+    years = [int(year) for year in re.findall('[1-2][0-9]{3}', source)]
+    current_year = datetime.now().year
+    years = [x for x in years if x <= current_year]
+    if len(years) == 0:
+        return None
+    if len(years) == 1:
+        return years[0]
+    return max(years)
+
+
+def find_missing_src(file_path, callback=lambda x, y: None, min_year=None):
     """
     TODO возвращает объект с полями:
         - sources: List - список источников
@@ -22,6 +39,7 @@ def find_missing_src(file_path, callback=lambda x, y: None):
 
     TODO извлекать даты  с помощью '[1-2][0-9]{3}' => 1000-2999
 
+    :param min_year: int минимальный год
     :param file_path: str путь к файлу
     :param callback: Callable[str, int[0:100]] принимает строку о текущей задаче и число с текущим процентом выполнения
     :return: Tuple[List[str], List[int]] возвращает список всех источников и список индексов источников на которые
@@ -54,7 +72,7 @@ def find_missing_src(file_path, callback=lambda x, y: None):
                 is_fine = False
                 # Проверка на наличие даты
                 for number in numbers:
-                    if number > LAST_DATE:
+                    if number > min_year:
                         sources.append(paragraph.text)
                         is_fine = True
                         break
