@@ -56,6 +56,17 @@ class _Author:
                              '{2} {0}.{1}.', '{2} {0}. {1}.', '{2}, {0}.{1}', '{2}, {0}. {1}.']]
         return res
 
+    def __eq__(self, other):
+        return self.last_name == other.last_name \
+               and self.first_name == other.first_name \
+               and self.middle_name == other.middle_name
+
+    def __hash__(self):
+        return hash(self.__repr__())
+
+    def __repr__(self):
+        return '{}. {}. {}'.format(self.first_name, self.middle_name, self.last_name)
+
 
 class SourceData:
     _author_regex = re.compile(
@@ -68,7 +79,7 @@ class SourceData:
     authors: set = None
     year: int
     has_links: bool = False
-    is_modern: bool = False
+    is_modern: bool = None
     links: List[str]
 
     def __init__(self, text, index, document, max_paragraph, min_year, check_authors=True, search_links=True):
@@ -98,6 +109,8 @@ class SourceData:
             self.is_modern = min_year <= self.year
         else:
             self.is_modern = None
+
+        pass
 
     def to_str(self):
         return f'{self.index}. {self.text}'
@@ -208,12 +221,14 @@ def find_missing_src(file_path, callback=lambda x, y: None, **kwargs):
         sources_header_index = find_sources(document)
         if sources_header_index is None:
             raise NoSourcesException()
-        sources_paragraphs = paragraphs[sources_header_index+1:]
+        sources_paragraphs = paragraphs[sources_header_index + 1:]
 
         source_index = 1
+        error_count = 0
         for index, paragraph in enumerate(sources_paragraphs):
             callback('Поиск источников', round(index * 100 / len(sources_paragraphs)))
             if paragraph.text == '':
+                error_count += 1
                 continue
             if is_source(paragraph):
                 sources.append(
@@ -227,7 +242,12 @@ def find_missing_src(file_path, callback=lambda x, y: None, **kwargs):
                         search_links=kwargs.get('search_links', True)
                     )
                 )
-                source_index+=1
+                source_index += 1
+            else:
+                error_count += 1
+
+            if error_count >= 4:
+                break
 
     callback("Завершение", 100)
     return sources

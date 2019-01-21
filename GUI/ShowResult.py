@@ -32,27 +32,33 @@ class ResultWidget(QWidget):
         self.old_list = QListWidget()
         self.old_links = [source.to_str()
                           for source in sources
-                          if not source.is_modern]
+                          if source.is_modern is not None and not source.is_modern]
         self.old_list.addItems(self.old_links)
         self.tab.addTab(self.old_list, "Список устаревших источников")
 
         data = without_none([source.year for source in sources])
         self.histogram = QStackedBarWidget(flags=self)
+
         normal_sources_years = Counter(without_none([source.year
                                                      for source in sources
                                                      if source.is_modern and source.has_links]))
         if len(normal_sources_years):
             self.histogram.add_plot(normal_sources_years, name='Прошли проверку', color=QColor(50, 200, 50))
+
         old_sources_years = Counter(without_none([source.year
                                                   for source in sources
-                                                  if not source.is_modern and source.has_links]))
+                                                  if source.is_modern is not None
+                                                  and not source.is_modern
+                                                  and source.has_links]))
         if len(old_sources_years):
             self.histogram.add_plot(old_sources_years, name='Устарели', color=QColor(200,200,50))
+
         missing_sources_years = Counter(without_none([source.year
                                                       for source in sources
                                                       if not source.has_links]))
         if len(missing_sources_years):
             self.histogram.add_plot(missing_sources_years, name='Отсутвуют ссылки', color=QColor(200,50,50))
+
         self.histogram.set_tooltip_func(lambda x, y, name: '{name}\nгод: {x}\nисточников: {y}'
                                         .format(x=x, y=y, name=name))
         self.histogram.horizontal_ax.set_ticks(range(min(data), max(data) + 2))
