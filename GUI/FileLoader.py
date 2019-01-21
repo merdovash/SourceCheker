@@ -49,6 +49,22 @@ class FileLoader(QWidget):
         auto_save_label.setToolTip(Text.text[lang]['auto_save_tooltip'])
         self.settings_layout.addRow(auto_save_label, self.auto_save)
 
+        self.check_authors = QCheckBox()
+        self.check_authors.setChecked(True)
+        self.check_authors.setToolTip(Text.text[lang]['check_authors_tooltip'])
+        check_authors_label = QLabel(Text.text[lang]['check_authors_label'])
+        check_authors_label.setToolTip(Text.text[lang]['check_authors_tooltip'])
+        self.settings_layout.addRow(check_authors_label, self.check_authors)
+
+        self.search_links = QCheckBox()
+        self.search_links.setChecked(False)
+        self.search_links.setToolTip("Для каждого источника будут собран спсиок параграфов, в которых имеется ссылка."
+                                     "\n(Может замедлить процесс анализа)")
+        search_links_label = QLabel("Собрать списки ссылок на источники")
+        search_links_label.setToolTip("Для каждого источника будут собран спсиок параграфов, в которых имеется ссылка."
+                                      "\n(Может замедлить процесс анализа)")
+        self.settings_layout.addRow(search_links_label, self.search_links)
+
         self.btn = QPushButton(Text.text[lang]['select_file_btn'])
         self.btn.clicked.connect(self.select_file)
         self.layout_.addWidget(self.btn, alignment=Qt.AlignCenter)
@@ -77,7 +93,6 @@ class FileLoader(QWidget):
     def dropEvent(self, event):
         for url in event.mimeData().urls():
             try:
-                print(url.toLocalFile())
                 self.run_signal.emit(url.toLocalFile())
             except Exception as exception:
                 QMessageBox().critical(self, "Ошибка", str(exception))
@@ -115,9 +130,9 @@ class FileLoader(QWidget):
             QApplication.instance().processEvents()
 
         try:
-            data, missing, old = find_missing_src(filename, progress_bar_update, **self.config())
+            sources = find_missing_src(filename, progress_bar_update, **self.config())
 
-            result_widget = ResultWidget(data, missing, old, filename)
+            result_widget = ResultWidget(sources, filename, **self.config())
             if self.auto_save.isChecked():
                 result_widget.save(auto=True)
 
@@ -142,5 +157,7 @@ class FileLoader(QWidget):
 
     def config(self):
         return dict(
-            min_year=self.min_year.value()
+            min_year=self.min_year.value(),
+            check_authors=self.check_authors.isChecked(),
+            search_links=self.search_links.isChecked()
         )

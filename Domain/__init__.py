@@ -2,6 +2,9 @@ import re
 from datetime import datetime
 
 
+def without_none(l):
+    return [x for x in l if x is not None]
+
 def get_year_from_source_text(text):
     """
     Допущения:

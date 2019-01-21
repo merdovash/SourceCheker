@@ -203,7 +203,7 @@ max-module-lines=1000
 # separator` is used to allow tabulation in dicts, etc.: {1  : 1,\n222: 2}.
 # `trailing-comma` allows a space between comma and closing bracket: (a, ).
 # `empty-line` allows space-only lines.
-no-space-check=trailing-comma,dict-separator
+no-space-_check=trailing-comma,dict-separator
 
 # Allow the body of a class to be on the same line as the declaration if body
 # contains single statement.
@@ -216,7 +216,7 @@ single-line-if-stmt=no
 
 [LOGGING]
 
-# Logging modules to check that the string format arguments are in logging
+# Logging modules to _check that the string format arguments are in logging
 # function parameter format
 logging-modules=logging
 
@@ -328,7 +328,7 @@ dummy-variables-rgx=_+$|(_[a-zA-Z0-9_]*[a-zA-Z0-9]+?$)|dummy|^ignored_|^unused_
 # with leading underscore
 ignored-argument-names=_.*|^ignored_|^unused_
 
-# Tells whether we should check for unused import in __init__ files.
+# Tells whether we should _check for unused import in __init__ files.
 init-import=no
 
 # List of qualified module names which can have objects that can redefine

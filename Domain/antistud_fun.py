@@ -1,6 +1,8 @@
 import re
 import os.path
+from collections import namedtuple
 from datetime import datetime
+from typing import List
 
 from docx import Document
 
@@ -12,6 +14,120 @@ MIN_STAGE = 2  # Кол-во заголовков списка [2, но иног
 
 class NoSourcesException(Exception):
     pass
+
+
+class NoAuthorException(Exception):
+    pass
+
+
+class _Author:
+    last_name: str = None
+    first_name: str = None
+    middle_name: str = None
+
+    _split_regex = re.compile(
+        r'(?:(?P<f>[А-Я])(?:.\s?)(?:(?P<m>[А-Я])(?:.\s?))?(?P<l>[А-Я][а-я]+))'
+        r'|(?:(?P<l2>[А-Я][а-я]+)(?:,?\s)(?P<f2>[А-Я])(?:.\s?)(?:(?P<m2>[А-Я])(?:.\s?))?)'
+    )
+
+    def __init__(self, text: str):
+        res = self._split_regex.findall(text)
+        if len(res) == 0:
+            raise NoAuthorException()
+        res = res[0]
+        self.last_name = res[3] if res[0] == '' else res[2]
+        self.first_name = res[4] if res[0] == '' else res[0]
+        self.middle_name = res[1] if res[1] != '' else res[5] if res[5] != '' else None
+        pass
+
+    def find_in_text(self, text):
+        for case in self.cases():
+            if case in text:
+                return True
+        return False
+
+    def cases(self):
+        if self.middle_name is None:
+            res = [t.format(self.first_name, self.last_name)
+                   for t in ['{0}.{1}', '{0}. {1}', '{1} {0}.', '{1}, {0}.']]
+        else:
+            res = [t.format(self.first_name, self.middle_name, self.last_name)
+                   for t in ['{0}.{1}.{2}', '{0}. {1}. {2}', '{0}.{1}. {2}',
+                             '{2} {0}.{1}.', '{2} {0}. {1}.', '{2}, {0}.{1}', '{2}, {0}. {1}.']]
+        return res
+
+
+class SourceData:
+    _author_regex = re.compile(
+        r'(?:[A-Я][а-я^\-]+[,\.]?(?:[\s]?[А-Я]\.){1,2})|(?:(?:[А-Я]\.[\s]?){1,2}\s[A-Я][а-я^\-]+)'
+    )
+    _index_regex: re.compile
+
+    text: str
+    index: int
+    authors: set = None
+    year: int
+    has_links: bool = False
+    is_modern: bool = False
+    links: List[str]
+
+    def __init__(self, text, index, document, max_paragraph, min_year, check_authors=True, search_links=True):
+        self.text = text
+        self.index = index
+
+        # self._index_regex = re.compile('\[([0-9],\s{0,2}){0,4}[' + str(self.index) + '](,\s{0,2}[0-9]){0,4}\]')
+        self._index_regex = re.compile(
+            '(?:\[(?:[0-9]+,\s?)*' + str(self.index) + '(?:,\s?[0-9]+)*(?:,\s[СCcс]\.\s[0-9]+)?\])'
+        )
+        authors_names = self._author_regex.findall(text)
+        if authors_names is not None and len(authors_names):
+            self.authors = set()
+            for author in authors_names:
+                try:
+                    self.authors.add(_Author(author))
+                except NoAuthorException:
+                    pass
+        else:
+            self.authors = None
+
+        self.year = get_year(text)
+
+        self._check(document, max_paragraph, check_authors, search_links)
+
+        if self.year is not None:
+            self.is_modern = min_year <= self.year
+        else:
+            self.is_modern = None
+
+    def to_str(self):
+        return f'{self.index}. {self.text}'
+
+    def _check(self, document, max_paragraph=None, check_authors=True, search_links=True):
+        if max_paragraph is not None:
+            paragraphs = document.paragraphs[:max_paragraph]
+        else:
+            paragraphs = document.paragraphs
+
+        links = []
+
+        for index, paragraph in enumerate(paragraphs):
+            if len(self._index_regex.findall(paragraph.text)):
+                links.append(paragraph.text)
+                if not search_links:
+                    break
+            if check_authors \
+                    and self.authors is not None \
+                    and len(self.authors) \
+                    and all(author.find_in_text(paragraph.text) for author in self.authors):
+                links.append(paragraph.text)
+                if not search_links:
+                    break
+
+        if len(links):
+            self.has_links = True
+            self.links = links
+        else:
+            self.links = []
 
 
 def get_year(source):
@@ -53,46 +169,12 @@ def is_source(paragraph):
     :param paragraph: Paragraph
     :return: bool
     """
-    text = paragraph.text.lower()
-    if len(re.findall('[0-9]+(\s)*[CСcс]\.', text)) > 0:
-        # 52 c.
-        return True
-
-    if len(re.findall('[CСcс]\.(\s)*[0-9]+', text)):
-        # c. 52
-        return True
-
-    if len(re.findall('с\.(\s){0,2}[0-9]{1,4}(\s){0,2}-(\s){0,2}[0-9]{1,4}', text)):
-        # c. 52 – 57
-        return True
-
-    if '//' in paragraph.text:
-        return True
-
-    if get_year(paragraph.text):
-        return True
-
-    return False
+    return len(re.findall(r'(?:[0-9]+\s?[CСcс]\.)|(?://)|(?:[1-2][0-9]{3})|(?:федеральн|положение)',
+                          paragraph.text,
+                          flags=re.I)) > 0
 
 
-def find_links(source_index, document, max_paragraph=None):
-    if max_paragraph is not None:
-        paragraphs = document.paragraphs[:max_paragraph]
-    else:
-        paragraphs = document.paragraphs
-
-    regexp = re.compile('\[([0-9],\s{0,2}){0,4}[' + str(source_index) + '](,\s{0,2}[0-9]){0,4}\]')
-
-    links = []
-
-    for index, paragraph in enumerate(paragraphs):
-        if regexp.findall(paragraph.text):
-            links.append(paragraph.text)
-
-    return links
-
-
-def find_missing_src(file_path, callback=lambda x, y: None, min_year=1000):
+def find_missing_src(file_path, callback=lambda x, y: None, **kwargs):
     """
     TODO возвращает объект с полями:
         - sources: List - список источников
@@ -109,7 +191,7 @@ def find_missing_src(file_path, callback=lambda x, y: None, min_year=1000):
     :param min_year: int минимальный год
     :param file_path: str путь к файлу
     :param callback: Callable[str, int[0:100]] принимает строку о текущей задаче и число с текущим процентом выполнения
-    :return: Tuple[List[str], List[int], List[int]]
+    :return: List[SourceData]
         возвращает список всех источников
         и список индексов источников на которые есть ссылки
         и список индексов устаревших источников
@@ -121,50 +203,31 @@ def find_missing_src(file_path, callback=lambda x, y: None, min_year=1000):
 
         document = Document(file_path)
         sources = []
-        old = []
-        links = []
-        lacks = []
 
         paragraphs = document.paragraphs
         sources_header_index = find_sources(document)
         if sources_header_index is None:
             raise NoSourcesException()
-        sources_paragraphs = paragraphs[sources_header_index:]
+        sources_paragraphs = paragraphs[sources_header_index+1:]
 
-        for index, paragraph in enumerate(sources_paragraphs, sources_header_index):
-            callback('Поиск источников', round(index * 10 / len(sources_paragraphs)))
+        source_index = 1
+        for index, paragraph in enumerate(sources_paragraphs):
+            callback('Поиск источников', round(index * 100 / len(sources_paragraphs)))
+            if paragraph.text == '':
+                continue
             if is_source(paragraph):
-                sources.append(paragraph)
-                year = get_year(paragraph.text)
-                if year is not None and year < min_year:
-                    old.append(len(sources) - 1)
-
-    for index, source in enumerate(sources):
-        callback('Поиск ссылок', round(index * 90 / len(sources)))
-        source_links = find_links(index + 1, document, sources_header_index)
-        if len(source_links) == 0:
-            lacks.append(index)
-        links.append(source_links)
+                sources.append(
+                    SourceData(
+                        paragraph.text,
+                        source_index,
+                        document,
+                        sources_header_index,
+                        min_year=kwargs.get('min_year', 1900),
+                        check_authors=kwargs.get('check_authors', True),
+                        search_links=kwargs.get('search_links', True)
+                    )
+                )
+                source_index+=1
 
     callback("Завершение", 100)
-    return [x.text for x in sources], lacks, old
-
-
-def run():
-    while True:
-
-        print("\n")
-        input_file_path = input("Path? ")
-
-        list_of_sources, missing_sources = find_missing_src(input_file_path)
-        print(list_of_sources)
-        print(missing_sources)
-
-        input_user_action = input("\nOpen another file? (y/n): ")
-
-        if input_user_action.lower() == "n":
-            break
-
-
-if __name__ == "__main__":
-    run()
+    return sources

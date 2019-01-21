@@ -1,49 +1,76 @@
+from collections import Counter
 from pathlib import Path
+from typing import List
 
 from PyQt5.QtCore import Qt
+from PyQt5.QtGui import QColor
 from PyQt5.QtWidgets import QWidget, QListWidget, QVBoxLayout, QHBoxLayout, QPushButton, QApplication, QFileDialog, \
-    QMessageBox, QLabel, QTabWidget, QTableView, QScrollBar, QAbstractItemView, QLineEdit, QFormLayout
+    QMessageBox, QLabel, QTabWidget, QTableView, QScrollBar, QAbstractItemView, QLineEdit, QFormLayout, QTreeView
 
-from Domain import get_missing_sources
-from Domain.antistud_fun import get_year
+from Domain import get_missing_sources, without_none
+from Domain.antistud_fun import get_year, SourceData
 from Domain.generate_file import generate
 
-from PyQtPlot.HistogramWidget import Histogram
+from PyQtPlot.StackedBar import QStackedBarWidget
 
 from GUI.QSourceList import QSourceModel
+from GUI.TreeView import TreeWidget
 
 
 class ResultWidget(QWidget):
-    def __init__(self, sources, missing, old, source_file, flags=None, *args, **kwargs):
-        super().__init__(flags, *args, **kwargs)
+    def __init__(self, sources: List[SourceData], source_file, flags=None, *args, **kwargs):
+        super().__init__(flags, *args)
         self.source_file = source_file
 
         self.tab = QTabWidget()
 
         self.missing_list = QListWidget()
-        self.missing_links = get_missing_sources(sources, missing)
+        self.missing_links = [x.to_str() for x in sources if not x.has_links]
         self.missing_list.addItems(self.missing_links)
         self.tab.addTab(self.missing_list, "Список пропущенных источников")
 
         self.old_list = QListWidget()
-        self.old_links = ["{i}. {text}".format(i=i, text=text) for i, text in enumerate(sources) if i in old]
+        self.old_links = [source.to_str()
+                          for source in sources
+                          if not source.is_modern]
         self.old_list.addItems(self.old_links)
         self.tab.addTab(self.old_list, "Список устаревших источников")
 
-        data = [x for x in [get_year(source) for source in sources] if x is not None]
-        self.histogram = Histogram(data, source_file, self)
-        self.histogram.set_tooltip_func(lambda x, y, name: 'год: {x}\nисточников: {y}'.format(x=x, y=y))
-        self.histogram.horizontal_ax.set_ticks(range(min(data), max(data)))
+        data = without_none([source.year for source in sources])
+        self.histogram = QStackedBarWidget(flags=self)
+        normal_sources_years = Counter(without_none([source.year
+                                                     for source in sources
+                                                     if source.is_modern and source.has_links]))
+        if len(normal_sources_years):
+            self.histogram.add_plot(normal_sources_years, name='Прошли проверку', color=QColor(50, 200, 50))
+        old_sources_years = Counter(without_none([source.year
+                                                  for source in sources
+                                                  if not source.is_modern and source.has_links]))
+        if len(old_sources_years):
+            self.histogram.add_plot(old_sources_years, name='Устарели', color=QColor(200,200,50))
+        missing_sources_years = Counter(without_none([source.year
+                                                      for source in sources
+                                                      if not source.has_links]))
+        if len(missing_sources_years):
+            self.histogram.add_plot(missing_sources_years, name='Отсутвуют ссылки', color=QColor(200,50,50))
+        self.histogram.set_tooltip_func(lambda x, y, name: '{name}\nгод: {x}\nисточников: {y}'
+                                        .format(x=x, y=y, name=name))
+        self.histogram.horizontal_ax.set_ticks(range(min(data), max(data) + 2))
         self.tab.addTab(self.histogram, "Распределение всех источников по годам")
 
-        self.table = QTableView()
-        self.table.setVerticalScrollMode(QAbstractItemView.ScrollPerPixel)
-        self.table.setModel(QSourceModel(sources, missing))
-        self.table.setWordWrap(True)
-        self.table.setTextElideMode(Qt.ElideMiddle)
-        self.table.setColumnWidth(0, 600)
-        self.table.resizeRowsToContents()
-        self.tab.addTab(self.table, 'Полная таблица')
+        self.complete_table = QTableView()
+        self.complete_table.setVerticalScrollMode(QAbstractItemView.ScrollPerPixel)
+        self.complete_table.setModel(QSourceModel(sources))
+        self.complete_table.setWordWrap(True)
+        self.complete_table.setTextElideMode(Qt.ElideMiddle)
+        self.complete_table.setColumnWidth(0, 100)
+        self.complete_table.setColumnWidth(1, 600)
+        self.complete_table.resizeRowsToContents()
+        self.tab.addTab(self.complete_table, 'Полная таблица')
+
+        if kwargs.get('search_links', False):
+            self.deep_table = TreeWidget(sources)
+            self.tab.addTab(self.deep_table, "Просмотр ссылок")
 
         self.setWindowTitle("Результат проверки {source_file}".format(source_file=source_file))
 
@@ -104,6 +131,7 @@ class ResultWidget(QWidget):
 
             self.saved_file_info.setVisible(True)
             self.save_path.setText(target_file)
+
         prepared_name = Path(self.source_file)
         prepared_name = prepared_name.with_name('[Проверка источников] ' + prepared_name.name).with_suffix('.docx')
         if not auto:
@@ -115,11 +143,10 @@ class ResultWidget(QWidget):
                     'Microsoft Word (*.docx)',
                     'Microsoft Word (*.docx)'
                 )
-                if name!='':
+                if name != '':
                     path = str(Path(name).with_suffix('.docx'))
                     save(path)
             except Exception as exception:
                 QMessageBox.critical(self, "Ошибка", "Во время сохранения произошла ошибка\n" + str(exception))
         else:
             save(str(prepared_name))
-
