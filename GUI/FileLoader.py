@@ -6,39 +6,50 @@ from PyQt5.QtWidgets import QWidget, QVBoxLayout, QLabel, QCheckBox, QPushButton
     QProgressBar, QApplication, QGroupBox, QFormLayout, QSpinBox
 
 from Domain.antistud_fun import find_missing_src, NoSourcesException
+from GUI import Text
 from GUI.ShowResult import ResultWidget
 
 
 class FileLoader(QWidget):
     run_signal = pyqtSignal('PyQt_PyObject')
-    new_result = pyqtSignal('PyQt_PyObject', 'PyQt_PyObject', 'PyQt_PyObject') # ResultWidget, str, bool
+    new_result = pyqtSignal('PyQt_PyObject', 'PyQt_PyObject', 'PyQt_PyObject')  # ResultWidget, str, bool
 
     def __init__(self, flags, *args, **kwargs):
         super().__init__(flags, *args, **kwargs)
+        lang = 'ru'
 
         self.layout_ = QVBoxLayout()
 
         self.label = QLabel("Или просто перетащите файл(ы) в окно")
         self.layout_.addWidget(self.label, 99, alignment=Qt.AlignCenter)
 
-        self.settings = QGroupBox('Настройки')
+        self.settings = QGroupBox(Text.text[lang]['settings_group_label'])
         self.settings_layout = QFormLayout()
         self.settings.setLayout(self.settings_layout)
 
         self.min_year = QSpinBox()
-        self.min_year.setRange(1970, datetime.now().year)
+        self.min_year.setRange(1900, datetime.now().year)
         self.min_year.setValue(2000)
-        self.settings_layout.addRow(QLabel('Минимальный год'), self.min_year)
+        self.min_year.setToolTip(Text.text[lang]['min_year_tooltip'])
+        min_year_label = QLabel(Text.text[lang]['min_year_label'])
+        min_year_label.setToolTip(Text.text[lang]['min_year_tooltip'])
+        self.settings_layout.addRow(min_year_label, self.min_year)
 
         self.view_type_checkbox = QCheckBox()
         self.view_type_checkbox.setChecked(True)
-        self.settings_layout.addRow(QLabel("Открыть в этом окне"),self.view_type_checkbox)
+        self.view_type_checkbox.setToolTip(Text.text[lang]['view_type_checkbox_tooltip'])
+        view_type_checkbox_label = QLabel(Text.text[lang]['view_type_checkbox_label'])
+        view_type_checkbox_label.setToolTip(Text.text[lang]['view_type_checkbox_tooltip'])
+        self.settings_layout.addRow(view_type_checkbox_label, self.view_type_checkbox)
 
         self.auto_save = QCheckBox()
         self.auto_save.setChecked(False)
-        self.settings_layout.addRow(QLabel('Автоматически сохранить отчет'), self.auto_save)
+        self.auto_save.setToolTip(Text.text[lang]['auto_save_tooltip'])
+        auto_save_label = QLabel(Text.text[lang]['auto_save_label'])
+        auto_save_label.setToolTip(Text.text[lang]['auto_save_tooltip'])
+        self.settings_layout.addRow(auto_save_label, self.auto_save)
 
-        self.btn = QPushButton("Выбрать файл")
+        self.btn = QPushButton(Text.text[lang]['select_file_btn'])
         self.btn.clicked.connect(self.select_file)
         self.layout_.addWidget(self.btn, alignment=Qt.AlignCenter)
 
@@ -69,7 +80,7 @@ class FileLoader(QWidget):
                 print(url.toLocalFile())
                 self.run_signal.emit(url.toLocalFile())
             except Exception as exception:
-                QMessageBox.critical(self, "Ошибка", str(exception))
+                QMessageBox().critical(self, "Ошибка", str(exception))
 
     def select_file(self):
         file_name_dialog = QFileDialog()
@@ -78,9 +89,10 @@ class FileLoader(QWidget):
         if file_name_dialog.exec_():
             try:
                 filenames = file_name_dialog.selectedFiles()
-                self.run_signal.emit(filenames[0])
+                for filename in filenames:
+                    self.run_signal.emit(filename)
             except Exception as exception:
-                QMessageBox.critical(self, "Ошибка", "Во время чтения прозошла ошибка: "+str(exception))
+                QMessageBox().critical(self, "Ошибка", "Во время чтения прозошла ошибка: " + str(exception))
 
     @pyqtSlot('PyQt_PyObject', name='run')
     def run(self, filename):
@@ -111,9 +123,9 @@ class FileLoader(QWidget):
 
             self.new_result.emit(result_widget, filename, self.view_type_checkbox.isChecked())
         except NoSourcesException:
-            QMessageBox.critical(self, "Ошибка", "Раздел с источниками не обнаружен")
+            QMessageBox().critical(self, "Ошибка", "Раздел с источниками не обнаружен")
         except Exception as exception:
-            QMessageBox.critical(self, "Ошибка", "Во время чтения файла произошла ошибка" + str(exception))
+            QMessageBox().critical(self, "Ошибка", "Во время чтения файла произошла ошибка" + str(exception))
             traceback.print_exc(exception)
 
 
