@@ -2,11 +2,14 @@
 
 block_cipher = None
 
+import sys
+from os import path
+site_packages = next(p for p in sys.path if 'site-packages' in p)
 
 a = Analysis(['run.py'],
-             pathex=['C:\\Users\\MERDovashkinar\\PycharmProjects\\SourceCheker'],
+             pathex=[],
              binaries=[],
-             datas=[],
+             datas=[(path.join(site_packages,"docx","templates"), "docx/templates")],
              hiddenimports=[],
              hookspath=[],
              runtime_hooks=[],

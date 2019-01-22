@@ -3,7 +3,7 @@ from datetime import datetime
 
 from PyQt5.QtCore import pyqtSignal, Qt, pyqtSlot
 from PyQt5.QtWidgets import QWidget, QVBoxLayout, QLabel, QCheckBox, QPushButton, QMessageBox, QFileDialog, \
-    QProgressBar, QApplication, QGroupBox, QFormLayout, QSpinBox
+    QProgressBar, QApplication, QGroupBox, QFormLayout, QSpinBox, QInputDialog
 
 from Domain.antistud_fun import find_missing_src, NoSourcesException
 from GUI import Text
@@ -99,7 +99,7 @@ class FileLoader(QWidget):
 
     def select_file(self):
         file_name_dialog = QFileDialog()
-        file_name_dialog.setNameFilters(['Microsoft Word (*.doc, *docx)'])
+        file_name_dialog.setNameFilters(['Microsoft Word (*.docx)'])
 
         if file_name_dialog.exec_():
             try:
@@ -159,5 +159,10 @@ class FileLoader(QWidget):
         return dict(
             min_year=self.min_year.value(),
             check_authors=self.check_authors.isChecked(),
-            search_links=self.search_links.isChecked()
+            search_links=self.search_links.isChecked(),
+            declare_text=lambda: QInputDialog().getText(
+                self,
+                "Заголовок списка литератур не найден",
+                "Укажите заголовок списка литературы."
+            )
         )

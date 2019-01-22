@@ -8,7 +8,7 @@ class MainWindow(QMainWindow):
     def __init__(self, flags=None, *args, **kwargs):
         super().__init__(flags, *args, **kwargs)
 
-        self.setBaseSize(QSize(300, 300))
+        self.setMinimumSize(QSize(500, 400))
 
         self.setWindowTitle("Проверка работ")
 

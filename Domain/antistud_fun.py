@@ -1,6 +1,11 @@
-import re
+"""
+TODO:
+    1) Отделять нормативные документы от научных работ -> нормативные документы не считать устаревшими
+    2) Проверка порядка источников
+"""
+
 import os.path
-from collections import namedtuple
+import re
 from datetime import datetime
 from typing import List
 
@@ -56,17 +61,6 @@ class _Author:
                              '{2} {0}.{1}.', '{2} {0}. {1}.', '{2}, {0}.{1}', '{2}, {0}. {1}.']]
         return res
 
-    def __eq__(self, other):
-        return self.last_name == other.last_name \
-               and self.first_name == other.first_name \
-               and self.middle_name == other.middle_name
-
-    def __hash__(self):
-        return hash(self.__repr__())
-
-    def __repr__(self):
-        return '{}. {}. {}'.format(self.first_name, self.middle_name, self.last_name)
-
 
 class SourceData:
     _author_regex = re.compile(
@@ -79,14 +73,13 @@ class SourceData:
     authors: set = None
     year: int
     has_links: bool = False
-    is_modern: bool = None
+    is_modern: bool = False
     links: List[str]
 
     def __init__(self, text, index, document, max_paragraph, min_year, check_authors=True, search_links=True):
         self.text = text
         self.index = index
 
-        # self._index_regex = re.compile('\[([0-9],\s{0,2}){0,4}[' + str(self.index) + '](,\s{0,2}[0-9]){0,4}\]')
         self._index_regex = re.compile(
             '(?:\[(?:[0-9]+,\s?)*' + str(self.index) + '(?:,\s?[0-9]+)*(?:,\s[СCcс]\.\s[0-9]+)?\])'
         )
@@ -109,8 +102,6 @@ class SourceData:
             self.is_modern = min_year <= self.year
         else:
             self.is_modern = None
-
-        pass
 
     def to_str(self):
         return f'{self.index}. {self.text}'
@@ -160,18 +151,34 @@ def get_year(source):
     return max(years)
 
 
-def find_sources(document):
+def check_paragraph_to_source_header(text):
+    """
+    Проверяет евляется ли переданный текст заголовком списка источников.
+    :param text: str
+    :return: bool
+    """
+    return bool(len(
+            re.findall(r'^(?:(?:(?:[сС]писок|[иИ]спользованн)[а-я]*\s)?(?:использ[а-я]*\s)?(?:[Лл]итератур|[иИ]сточник)[а-я]*(?:[.:])?)$',
+                       text, re.I)))
+
+
+def find_sources(document, text: str = None):
     """
     Возвращает индекс параграфа в документе, с которого начниатеся список литературы
+    список литературы
+    :param text: optional Строка заголовка, указнная пользователем
     :param document: WordDocument
     :return: int
     """
     last_mention = None
-    for index, paragraph in enumerate(document.paragraphs):
-        paragraph_text = paragraph.text.lower()
-        if "список" in paragraph_text:
-            if ("литератур" in paragraph_text) or ("источник" in paragraph_text):
+    if text is None:
+        for index, paragraph in enumerate(document.paragraphs):
+            if check_paragraph_to_source_header(paragraph.text):
                 last_mention = index
+    else:
+        for index, paragraph in enumerate(document.paragraphs):
+            if text == paragraph.text:
+                return index
 
     return last_mention
 
@@ -189,21 +196,21 @@ def is_source(paragraph):
 
 def find_missing_src(file_path, callback=lambda x, y: None, **kwargs):
     """
-    TODO возвращает объект с полями:
-        - sources: List - список источников
-            - text: str - текст источника
-            - year: int - год источника
-            - has_link: bool - есть ли ссылка на этот источник
-            - is_modern: bool - проходит ли проверку на современность
-            - paragraphs: List[str] - список параграфов, имеющих ссылки на этот источник
-        - author: List[str, str, str] - автор работы
-        - year: int - год написания работы
-
-    TODO извлекать даты  с помощью '[1-2][0-9]{3}' => 1000-2999
-
-    :param min_year: int минимальный год
     :param file_path: str путь к файлу
     :param callback: Callable[str, int[0:100]] принимает строку о текущей задаче и число с текущим процентом выполнения
+    :param kwargs:
+        :key declare_text: Callable[[], str]
+            Указатель на функцию, которая возращает текст заголовка спсика литературы
+
+        :key min_year: int
+            Все источники, которые были созданы ниже указанного года, будут помечены как устревшие
+
+        :key check_author: bool
+            если True, то включает проверку ссылок по авторам источников
+
+        :key search_links: bool
+            если True, то включает сбор абзацев, в которых есть ссылки на каждую из ссылок
+
     :return: List[SourceData]
         возвращает список всех источников
         и список индексов источников на которые есть ссылки
@@ -220,15 +227,19 @@ def find_missing_src(file_path, callback=lambda x, y: None, **kwargs):
         paragraphs = document.paragraphs
         sources_header_index = find_sources(document)
         if sources_header_index is None:
-            raise NoSourcesException()
+            source_header_text = kwargs.get('declare_text')()
+            if source_header_text[1]:
+                sources_header_index = find_sources(document, source_header_text[0])
+                if sources_header_index is None:
+                    raise NoSourcesException()
+            else:
+                raise NoSourcesException()
         sources_paragraphs = paragraphs[sources_header_index + 1:]
 
         source_index = 1
-        error_count = 0
         for index, paragraph in enumerate(sources_paragraphs):
             callback('Поиск источников', round(index * 100 / len(sources_paragraphs)))
             if paragraph.text == '':
-                error_count += 1
                 continue
             if is_source(paragraph):
                 sources.append(
@@ -243,11 +254,6 @@ def find_missing_src(file_path, callback=lambda x, y: None, **kwargs):
                     )
                 )
                 source_index += 1
-            else:
-                error_count += 1
-
-            if error_count >= 4:
-                break
 
     callback("Завершение", 100)
     return sources
