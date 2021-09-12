@@ -1,20 +1,28 @@
-from collections import Counter
+from collections import Counter, defaultdict
+from enum import Enum
 from pathlib import Path
 from typing import List
 
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QColor
 from PyQt5.QtWidgets import QWidget, QListWidget, QVBoxLayout, QHBoxLayout, QPushButton, QApplication, QFileDialog, \
-    QMessageBox, QLabel, QTabWidget, QTableView, QScrollBar, QAbstractItemView, QLineEdit, QFormLayout, QTreeView
+    QMessageBox, QLabel, QTabWidget, QTableView,  QAbstractItemView, QLineEdit, QFormLayout
 
-from Domain import get_missing_sources, without_none
-from Domain.antistud_fun import get_year, SourceData
+from Domain import without_none
+from Domain.antistud_fun import SourceData
 from Domain.generate_file import generate
 
 from PyQtPlot.StackedBar import QStackedBarWidget
 
 from GUI.QSourceList import QSourceModel
 from GUI.TreeView import TreeWidget
+
+
+class SourceState(Enum):
+    OK = 1
+    NO_LINKS = 2
+    OUTDATED = 3
+    NO_DATA = 4
 
 
 class ResultWidget(QWidget):
@@ -24,45 +32,64 @@ class ResultWidget(QWidget):
 
         self.tab = QTabWidget()
 
+        for source in sources:
+            source.set_limit_year(kwargs.get('min_year' or 0))
+
         self.missing_list = QListWidget()
-        self.missing_links = [x.to_str() for x in sources if not x.has_links]
+        self.missing_links = [str(x) for x in sources if not x.has_links]
         self.missing_list.addItems(self.missing_links)
         self.tab.addTab(self.missing_list, "Список пропущенных источников")
 
         self.old_list = QListWidget()
-        self.old_links = [source.to_str()
+        self.old_links = [str(source)
                           for source in sources
-                          if source.is_modern is not None and not source.is_modern]
+                          if source.is_modern is False]
         self.old_list.addItems(self.old_links)
         self.tab.addTab(self.old_list, "Список устаревших источников")
 
         data = without_none([source.year for source in sources])
-        self.histogram = QStackedBarWidget(flags=self)
+        if data:
+            analyze = defaultdict(list)
+            for source in sources:
+                if source.is_modern is True and source.has_links:
+                    analyze[SourceState.OK].append(source.year)
+                elif source.is_modern is True and not source.has_links:
+                    analyze[SourceState.NO_LINKS].append(source.year)
+                elif source.is_modern is False:
+                    analyze[SourceState.OUTDATED].append(source.year)
+                else:
+                    analyze[SourceState.NO_DATA].append(source.year)
 
-        normal_sources_years = Counter(without_none([source.year
-                                                     for source in sources
-                                                     if source.is_modern and source.has_links]))
-        if len(normal_sources_years):
-            self.histogram.add_plot(normal_sources_years, name='Прошли проверку', color=QColor(50, 200, 50))
+            self.histogram = QStackedBarWidget(flags=self)
 
-        old_sources_years = Counter(without_none([source.year
-                                                  for source in sources
-                                                  if source.is_modern is not None
-                                                  and not source.is_modern
-                                                  and source.has_links]))
-        if len(old_sources_years):
-            self.histogram.add_plot(old_sources_years, name='Устарели', color=QColor(200,200,50))
+            normal_sources_years = Counter(without_none(analyze[SourceState.OK]))
+            if len(normal_sources_years):
+                self.histogram.add_plot(normal_sources_years, name='Прошли проверку', color=QColor(50, 200, 50))
 
-        missing_sources_years = Counter(without_none([source.year
-                                                      for source in sources
-                                                      if not source.has_links]))
-        if len(missing_sources_years):
-            self.histogram.add_plot(missing_sources_years, name='Отсутвуют ссылки', color=QColor(200,50,50))
+            unknown_sources_year = Counter(without_none(analyze[SourceState.NO_DATA]))
+            if len(unknown_sources_year):
+                self.histogram.add_plot(unknown_sources_year, name='Не известна дата', color=QColor(50, 200, 200))
 
-        self.histogram.set_tooltip_func(lambda x, y, name: '{name}\nгод: {x}\nисточников: {y}'
-                                        .format(x=x, y=y, name=name))
-        self.histogram.horizontal_ax.set_ticks(range(min(data), max(data) + 2))
-        self.tab.addTab(self.histogram, "Распределение всех источников по годам")
+            old_sources_years = Counter(without_none(analyze[SourceState.OUTDATED]))
+            if len(old_sources_years):
+                self.histogram.add_plot(old_sources_years, name='Устарели', color=QColor(200, 200, 50))
+
+            missing_sources_years = Counter(without_none(analyze[SourceState.NO_LINKS]))
+            if len(missing_sources_years):
+                self.histogram.add_plot(missing_sources_years, name='Отсутвуют ссылки', color=QColor(200,50,50))
+
+            self.histogram.set_tooltip_func(lambda x, y, name: '{name}\nгод: {x}\nисточников: {y}'
+                                            .format(x=x, y=y, name=name))
+
+            min_value = min(data)
+            max_value = max(data)
+            interval = max_value - min_value
+            if interval < 5:
+                min_value = min(min_value, min_value - int((5 - interval) * 3/5))
+                max_value = max(max_value, max_value + int((5 - interval) * 2/5))
+            self.histogram.horizontal_ax.set_ticks(range(min_value, max_value + 1))
+            self.histogram.horizontal_ax.set_offset(1)
+            self.tab.addTab(self.histogram, "Распределение всех источников по годам")
 
         self.complete_table = QTableView()
         self.complete_table.setVerticalScrollMode(QAbstractItemView.ScrollPerPixel)

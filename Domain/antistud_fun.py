@@ -3,13 +3,14 @@ TODO:
     1) Отделять нормативные документы от научных работ -> нормативные документы не считать устаревшими
     2) Проверка порядка источников
 """
-
+import collections
 import os.path
 import re
 from datetime import datetime
-from typing import List
+from enum import Enum
+from typing import List, Iterator, Optional, Callable, Any, Dict, Sequence, Union
 
-from docx import Document
+from Domain.docx_extract import process
 
 # Настройки
 MAX_ERRORS = 3  # Макс. кол-во ошибок для остановки поиска  [3]
@@ -61,6 +62,20 @@ class _Author:
                              '{2} {0}.{1}.', '{2} {0}. {1}.', '{2}, {0}.{1}', '{2}, {0}. {1}.']]
         return res
 
+    def __str__(self):
+        res = [self.last_name]
+        if len(self.first_name) == 1:
+            res.append(self.first_name + '.')
+        else:
+            res.append(self.first_name)
+        if self.middle_name:
+            if len(self.middle_name) == 1:
+                res.append(self.middle_name + '.')
+            else:
+                res.append(self.middle_name)
+
+        return ' '.join(res)
+
 
 class SourceData:
     _author_regex = re.compile(
@@ -72,66 +87,111 @@ class SourceData:
     index: int
     authors: set = None
     year: int
-    has_links: bool = False
-    is_modern: bool = False
     links: List[str]
+    is_modern = None
 
-    def __init__(self, text, index, document, max_paragraph, min_year, check_authors=True, search_links=True):
+    def __init__(self, text, index, year: Optional[int] = None, link: Optional[str] = None,
+                 authors: Optional[List[str]] = None, name: str = None, original: str = None):
         self.text = text
         self.index = index
+        self._links = None
+        self.original = original
+        self.name = name
 
-        self._index_regex = re.compile(
-            '(?:\[(?:[0-9]+,\s?)*' + str(self.index) + '(?:,\s?[0-9]+)*(?:,\s[СCcс]\.\s[0-9]+)?\])'
+        self.index_regex = re.compile(
+            r'(?:\[(?:[0-9]+,\s?)*' + str(self.index) + r'(?:,\s?[0-9]+)*(?:,\s[СCcс]\.\s[0-9]+)?\])'
         )
-        authors_names = self._author_regex.findall(text)
-        if authors_names is not None and len(authors_names):
-            self.authors = set()
-            for author in authors_names:
-                try:
-                    self.authors.add(_Author(author))
-                except NoAuthorException:
-                    pass
+
+        self.authors = set()
+        if authors is None:
+            authors_names = self._author_regex.findall(text)
+            if authors_names is not None and len(authors_names):
+                self.authors = set()
+                for author in authors_names:
+                    try:
+                        self.authors.add(_Author(author))
+                    except NoAuthorException:
+                        pass
         else:
-            self.authors = None
+            self.authors = set(map(_Author, authors))
 
-        self.year = get_year(text)
+        self.year = year
 
-        self._check(document, max_paragraph, check_authors, search_links)
+        self._e_link = link
+        if not self.year and self._e_link:
+            self.year = datetime.now().year
 
-        if self.year is not None:
-            self.is_modern = min_year <= self.year
-        else:
-            self.is_modern = None
+    def __str__(self):
+        return repr(self)
 
-    def to_str(self):
-        return f'{self.index}. {self.text}'
+    def __repr__(self):
+        if self.name:
+            return self.name
+        if self.text:
+            return self.text
+        return self.original
 
-    def _check(self, document, max_paragraph=None, check_authors=True, search_links=True):
-        if max_paragraph is not None:
-            paragraphs = document.paragraphs[:max_paragraph]
-        else:
-            paragraphs = document.paragraphs
-
+    def find_links(self, document: 'Referat', check_authors=True, search_links=True):
         links = []
 
-        for index, paragraph in enumerate(paragraphs):
-            if len(self._index_regex.findall(paragraph.text)):
-                links.append(paragraph.text)
+        for index, paragraph in enumerate(reversed(document.body())):
+            if paragraph == self.original:
+                continue
+            if len(self.index_regex.findall(paragraph)):
+                links.append(paragraph)
                 if not search_links:
                     break
             if check_authors \
                     and self.authors is not None \
                     and len(self.authors) \
-                    and all(author.find_in_text(paragraph.text) for author in self.authors):
-                links.append(paragraph.text)
+                    and all(author.find_in_text(paragraph) for author in self.authors):
+                links.append(paragraph)
                 if not search_links:
                     break
+        self._links = links
+        return links
 
-        if len(links):
-            self.has_links = True
-            self.links = links
-        else:
-            self.links = []
+    @property
+    def has_links(self) -> bool:
+        return bool(self.links)
+
+    @property
+    def links(self) -> List[str]:
+        return self._links
+
+    def set_limit_year(self, year):
+        if self.year:
+            self.is_modern = self.year >= year
+
+
+class Referat(collections.Collection):
+    def __len__(self) -> int:
+        return len(self._raw)
+
+    def __iter__(self) -> Iterator:
+        return iter(self._raw)
+
+    def __contains__(self, __x: object) -> bool:
+        return __x in self._raw
+
+    def __init__(self, paragraphs: List[str], declare_text: Callable[[], str]):
+        self._raw = paragraphs
+
+        self._source_header_index = self._find_source_paragraph_index(check_paragraph_to_source_header)
+        if not self._source_header_index:
+            user_text = declare_text()
+            self._source_header_index = self._find_source_paragraph_index(lambda x: x == user_text)
+
+    def _find_source_paragraph_index(self, is_source_header):
+        for i, el in enumerate(reversed(self._raw)):
+            if is_source_header(el):
+                return len(self._raw) - i
+
+    def body(self) -> List[str]:
+        return self._raw[:self._source_header_index]
+
+    def sources(self) -> List[str]:
+        return self._raw[self._source_header_index:]
 
 
 def get_year(source):
@@ -158,50 +218,72 @@ def check_paragraph_to_source_header(text):
     :return: bool
     """
     return bool(len(
-            re.findall(r'^(?:(?:(?:[сС]писок|[иИ]спользованн)[а-я]*\s)?(?:использ[а-я]*\s)?(?:[Лл]итератур|[иИ]сточник)[а-я]*(?:[.:])?)$',
-                       text, re.I)))
+        re.findall(
+            r'^(?:(?:(?:[сС]писок|[иИ]спользованн)[а-я]*\s)?(?:использ[а-я]*\s)?(?:(?:[Лл]итератур|[иИ]сточник)[а-я]*\s*и?\s*)+(?:[.:])?)$',
+            text, re.I)))
 
 
-def find_sources(document, text: str = None):
+LINK = r'(https?://(?:[\w\-]*\.?)+(?:/[\w\d\-]*)+(?:.html)?)'
+NUMBER = r'^(?:(?P<index>\d+)\s*[\.\?\)]?\s*)'
+AUTHOR = r'(?P<authors>(?:\w+\,?\s+\w+\.?(?:\s*\w+\.?)?)|(?:\w\.(?:\s*\w+\.?)?\,\s*\w+))'
+
+MAP: Dict[Any, Callable[[Sequence[Union[str, bytes]], str], SourceData]] = {
+    # 1. https://address.com/path описание
+    re.compile(NUMBER + LINK + r'\s(.*\s?)+?'):
+        (lambda groups, original: SourceData(
+            groups[2],
+            int(groups[0]),
+            link=groups[1],
+            original=original,
+        )),
+
+    # 1. Фамилия И.О., работа / ФИО // год ...
+    re.compile(NUMBER + AUTHOR + r'(.*)(?:,\s/\s?.*)(?:\s//\s)(\d{4})'):
+        (lambda groups, original: SourceData(
+            ' '.join([groups[1], groups[2]]),
+            index=int(groups[0]),
+            year=int(groups[3]),
+            authors=[groups[1]],
+            original=original,
+            name=groups[1]
+        )),
+
+    re.compile(NUMBER + r'(\w+\s+\w\.(?:\w\.?)?,?)+\s((?:[\w\":\-.]*\s?)+).*(\d{4})'):
+        (lambda groups, original: SourceData(
+            ' '.join([groups[1], groups[2]]),
+            int(groups[0]),
+            int(groups[3]),
+            original=original)
+         ),
+
+    re.compile(NUMBER + r'([\w\s«»\[\]:\-]*[Ээ]лектронный ресурс[\w\s«»\[\]:\-]*)<?' + LINK):
+        (lambda groups, original: SourceData(
+            groups[1],
+            int(groups[0]),
+            link=groups[2],
+            original=original
+        ))
+}
+
+
+def try_build_source(paragraph: str):
+    for reg, builder in MAP.items():
+        res = re.match(reg, paragraph)
+        if res:
+            groups = res.groups()
+            try:
+                print(reg.pattern)
+                return builder(groups, paragraph)
+            except ValueError:
+                print(reg.pattern, paragraph)
+
+
+def find_missing_src(file_path, callback=lambda x, y: None, declare_text: Callable[[], str] = None, **kwargs):
     """
-    Возвращает индекс параграфа в документе, с которого начниатеся список литературы
-    список литературы
-    :param text: optional Строка заголовка, указнная пользователем
-    :param document: WordDocument
-    :return: int
-    """
-    last_mention = None
-    if text is None:
-        for index, paragraph in enumerate(document.paragraphs):
-            if check_paragraph_to_source_header(paragraph.text):
-                last_mention = index
-    else:
-        for index, paragraph in enumerate(document.paragraphs):
-            if text == paragraph.text:
-                return index
-
-    return last_mention
-
-
-def is_source(paragraph):
-    """
-    Проверяет является ли параграф источником
-    :param paragraph: Paragraph
-    :return: bool
-    """
-    return len(re.findall(r'(?:[0-9]+\s?[CСcс]\.)|(?://)|(?:[1-2][0-9]{3})|(?:федеральн|положение)',
-                          paragraph.text,
-                          flags=re.I)) > 0
-
-
-def find_missing_src(file_path, callback=lambda x, y: None, **kwargs):
-    """
+    :param declare_text: функция точного поиска заголовка списка исопльзованной литературы
     :param file_path: str путь к файлу
     :param callback: Callable[str, int[0:100]] принимает строку о текущей задаче и число с текущим процентом выполнения
     :param kwargs:
-        :key declare_text: Callable[[], str]
-            Указатель на функцию, которая возращает текст заголовка спсика литературы
-
         :key min_year: int
             Все источники, которые были созданы ниже указанного года, будут помечены как устревшие
 
@@ -220,40 +302,25 @@ def find_missing_src(file_path, callback=lambda x, y: None, **kwargs):
     if not os.path.isfile(file_path):
         return None, None
     else:
+        document = Referat(
+            list(map(lambda x: x.strip(), filter(None, process(file_path).split('\n')))),
+            declare_text=declare_text,
+        )
 
-        document = Document(file_path)
         sources = []
+        len_body = len(document.sources())
+        if not len_body:
+            raise NoSourcesException()
 
-        paragraphs = document.paragraphs
-        sources_header_index = find_sources(document)
-        if sources_header_index is None:
-            source_header_text = kwargs.get('declare_text')()
-            if source_header_text[1]:
-                sources_header_index = find_sources(document, source_header_text[0])
-                if sources_header_index is None:
-                    raise NoSourcesException()
-            else:
-                raise NoSourcesException()
-        sources_paragraphs = paragraphs[sources_header_index + 1:]
-
-        source_index = 1
-        for index, paragraph in enumerate(sources_paragraphs):
-            callback('Поиск источников', round(index * 100 / len(sources_paragraphs)))
-            if paragraph.text == '':
+        for index, paragraph in enumerate(document.sources()):
+            callback('Поиск источников', round(index * 100 / len_body))
+            if not paragraph:
                 continue
-            if is_source(paragraph):
-                sources.append(
-                    SourceData(
-                        paragraph.text,
-                        source_index,
-                        document,
-                        sources_header_index,
-                        min_year=kwargs.get('min_year', 1900),
-                        check_authors=kwargs.get('check_authors', True),
-                        search_links=kwargs.get('search_links', True)
-                    )
-                )
-                source_index += 1
+
+            source = try_build_source(paragraph)
+            if source:
+                source.find_links(document)
+                sources.append(source)
 
     callback("Завершение", 100)
     return sources

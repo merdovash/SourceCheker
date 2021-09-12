@@ -137,8 +137,8 @@ class FileLoader(QWidget):
                 result_widget.save(auto=True)
 
             self.new_result.emit(result_widget, filename, self.view_type_checkbox.isChecked())
-        except NoSourcesException:
-            QMessageBox().critical(self, "Ошибка", "Раздел с источниками не обнаружен")
+        except NoSourcesException as e:
+            QMessageBox().critical(self, "Ошибка", "Раздел с источниками не обнаружен"+str(e))
         except Exception as exception:
             QMessageBox().critical(self, "Ошибка", "Во время чтения файла произошла ошибка" + str(exception))
             traceback.print_exc(exception)

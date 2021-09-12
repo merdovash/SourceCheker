@@ -9,6 +9,8 @@ from Domain.antistud_fun import get_year, SourceData
 class QSourceModel(QAbstractTableModel):
     year_col = 0
     text_col = 1
+    author_col = 2
+    link_col = 3
 
     def __init__(self, sources):
         super().__init__()
@@ -18,7 +20,7 @@ class QSourceModel(QAbstractTableModel):
         return len(self.sources)
 
     def columnCount(self, parent=None, *args, **kwargs):
-        return 2
+        return 4
 
     def data(self, index: QModelIndex, role=None):
         row = index.row()
@@ -26,8 +28,12 @@ class QSourceModel(QAbstractTableModel):
         if role == Qt.DisplayRole:
             if col == self.year_col:
                 return self.sources[row].year
-            if col == self.text_col:
+            elif col == self.text_col:
                 return self.sources[row].text
+            elif col == self.year_col:
+                return str(self.sources[row].year or 'не указан')
+            elif col == self.author_col:
+                return str(', '.join(map(str, self.sources[row].authors)))
 
         if role == Qt.BackgroundColorRole:
             if col == self.year_col:
@@ -57,5 +63,5 @@ class QSourceModel(QAbstractTableModel):
     def headerData(self, p_int, orientation, role=None):
         if orientation == Qt.Horizontal:
             if role == Qt.DisplayRole:
-                return ['Год', 'Информация об источнике'][p_int]
+                return ['Год', 'Информация об источнике', 'Автор', 'Ссылка'][p_int]
         return QVariant()
